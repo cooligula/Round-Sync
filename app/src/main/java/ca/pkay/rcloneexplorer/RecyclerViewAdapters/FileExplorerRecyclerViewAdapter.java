@@ -2,6 +2,7 @@ package ca.pkay.rcloneexplorer.RecyclerViewAdapters;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -20,7 +21,11 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.model.GlideUrl;
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.request.target.Target;
 import com.bumptech.glide.signature.ObjectKey;
 
 import java.net.MalformedURLException;
@@ -220,6 +225,7 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
         holder.fileIcon.getLayoutParams().width = thumbnailSizePx;
         holder.fileIcon.getLayoutParams().height = thumbnailSizePx;
         holder.videoBadge.setVisibility(isVideo ? View.VISIBLE : View.GONE);
+        holder.fileIcon.setImageTintList(holder.defaultIconTint);
 
         if (item.getRemote().getType() == RemoteItem.SAFW) {
             bindSafFile(holder, item, glideOption);
@@ -236,11 +242,13 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
             Glide.with(context)
                     .load(new VideoThumbnailRequest(url, cacheKey))
                     .apply(glideOption)
+                    .listener(untintOnLoad(holder))
                     .into(holder.fileIcon);
         } else {
             Glide.with(context)
                     .load(new PersistentGlideUrl(url))
                     .apply(glideOption)
+                    .listener(untintOnLoad(holder))
                     .into(holder.fileIcon);
         }
     }
@@ -250,8 +258,32 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
         Glide.with(context).clear(holder.fileIcon);
         holder.fileIcon.getLayoutParams().width = iconSizePx;
         holder.fileIcon.getLayoutParams().height = iconSizePx;
+        holder.fileIcon.setImageTintList(holder.defaultIconTint);
         holder.fileIcon.setImageResource(R.drawable.ic_file);
         holder.videoBadge.setVisibility(View.GONE);
+    }
+
+    /**
+     * The row theme tints every ImageView with the text colour (meant for the monochrome file icon).
+     * Applied to a photo that turns it into a solid colour block, so the tint is dropped as soon as a
+     * real thumbnail arrives. The tinted placeholder/error icons keep it.
+     */
+    private RequestListener<Drawable> untintOnLoad(@NonNull ViewHolder holder) {
+        return new RequestListener<Drawable>() {
+            @Override
+            public boolean onLoadFailed(GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                if (e != null) {
+                    FLog.w(TAG, "thumbnail failed: %s", e.getRootCauses().isEmpty() ? e.getMessage() : e.getRootCauses().get(0).toString());
+                }
+                return false;
+            }
+
+            @Override
+            public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                holder.fileIcon.setImageTintList(null);
+                return false;
+            }
+        };
     }
 
     private void bindSafFile(@NonNull ViewHolder holder, FileItem item, RequestOptions glideOption) {
@@ -261,6 +293,7 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
                     .with(context)
                     .load(contentUri)
                     .apply(glideOption)
+                    .listener(untintOnLoad(holder))
                     .into(holder.fileIcon);
         } catch (FileAccessError e) {
             FLog.e(TAG, "onBindViewHolder: SAF error", e);
@@ -509,6 +542,7 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
         public final ImageView fileIcon;
         public final ImageView dirIcon;
         public final ImageView videoBadge;
+        public final android.content.res.ColorStateList defaultIconTint;
         public final TextView fileName;
         public final TextView fileModTime;
         public final TextView fileSize;
@@ -523,6 +557,9 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
             this.fileIcon = view.findViewById(R.id.file_icon);
             this.dirIcon = view.findViewById(R.id.dir_icon);
             this.videoBadge = view.findViewById(R.id.video_badge);
+            this.defaultIconTint = fileIcon.getImageTintList();
+            // The badge has its own colours; the row theme must not tint it.
+            this.videoBadge.setImageTintList(null);
             this.fileName = view.findViewById(R.id.file_name);
             this.fileModTime = view.findViewById(R.id.file_modtime);
             this.fileSize = view.findViewById(R.id.file_size);
