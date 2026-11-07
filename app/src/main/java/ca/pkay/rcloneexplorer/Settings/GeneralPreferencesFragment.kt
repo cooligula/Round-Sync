@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
+import android.text.format.Formatter
 import android.util.Log
 import android.widget.EditText
 import android.widget.Toast
@@ -16,6 +17,7 @@ import ca.pkay.rcloneexplorer.AppShortcutsHelper
 import ca.pkay.rcloneexplorer.Items.RemoteItem
 import ca.pkay.rcloneexplorer.R
 import ca.pkay.rcloneexplorer.Rclone
+import ca.pkay.rcloneexplorer.thumbnails.ThumbnailGlideModule
 import ca.pkay.rcloneexplorer.util.FLog
 import de.felixnuesse.extract.extensions.TAG
 import de.felixnuesse.extract.settings.language.LanguagePicker
@@ -44,6 +46,21 @@ class GeneralPreferencesFragment : PreferenceFragmentCompat() {
                 resources.getString(R.string.pref_thumbnails_size_summary, sizeMb.toFloat())
             }
 
+        val cacheClearPreference =
+            findPreference<Preference>(getString(R.string.pref_key_thumbnail_cache_clear))
+        refreshThumbnailCacheSummary(cacheClearPreference)
+        cacheClearPreference?.setOnPreferenceClickListener {
+            val appContext = requireContext().applicationContext
+            Thread {
+                ThumbnailGlideModule.clearCache(appContext)
+                activity?.runOnUiThread {
+                    Toasty.info(appContext, getString(R.string.pref_thumbnail_cache_cleared), Toast.LENGTH_SHORT, true).show()
+                    refreshThumbnailCacheSummary(cacheClearPreference)
+                }
+            }.start()
+            true
+        }
+
         val shortcutsPreference = findPreference("AppShortcutTempKey") as Preference?
         shortcutsPreference?.setOnPreferenceClickListener {
             showAppShortcutDialog()
@@ -57,6 +74,21 @@ class GeneralPreferencesFragment : PreferenceFragmentCompat() {
             true
         }
 
+    }
+
+    private fun refreshThumbnailCacheSummary(preference: Preference?) {
+        val appContext = requireContext().applicationContext
+        Thread {
+            val bytes = ThumbnailGlideModule.getCacheSizeBytes(appContext)
+            activity?.runOnUiThread {
+                if (isAdded) {
+                    preference?.summary = getString(
+                        R.string.pref_thumbnail_cache_summary,
+                        Formatter.formatShortFileSize(appContext, bytes)
+                    )
+                }
+            }
+        }.start()
     }
 
     private fun showThumbnailSizeDialog(preference: Preference) {

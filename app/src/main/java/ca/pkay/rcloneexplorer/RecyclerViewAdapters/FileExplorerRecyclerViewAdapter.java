@@ -4,9 +4,11 @@ import android.content.Context;
 import android.graphics.Color;
 import android.net.Uri;
 import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -19,6 +21,7 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.load.model.GlideUrl;
 import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.signature.ObjectKey;
 
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -28,6 +31,7 @@ import java.util.List;
 import ca.pkay.rcloneexplorer.Items.FileItem;
 import ca.pkay.rcloneexplorer.Items.RemoteItem;
 import ca.pkay.rcloneexplorer.R;
+import ca.pkay.rcloneexplorer.thumbnails.VideoThumbnailRequest;
 import ca.pkay.rcloneexplorer.util.FLog;
 import io.github.x0b.safdav.SafAccessProvider;
 import io.github.x0b.safdav.file.FileAccessError;
@@ -49,6 +53,8 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
     private boolean wrapFileNames;
     private Context context;
     private long sizeLimit;
+    private final int thumbnailSizePx;
+    private final int iconSizePx;
 
     public interface OnClickListener {
         void onFileClicked(FileItem fileItem);
@@ -72,6 +78,8 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
         canSelect = true;
         wrapFileNames = true;
         optionsDisabled = false;
+        thumbnailSizePx = context.getResources().getDimensionPixelSize(R.dimen.filepicker_thumbnail_size);
+        iconSizePx = context.getResources().getDimensionPixelSize(R.dimen.filepicker_icon_size);
         sizeLimit = PreferenceManager.getDefaultSharedPreferences(context)
                 .getLong(context.getString(R.string.pref_key_thumbnail_size_limit),
                         context.getResources().getInteger(R.integer.default_thumbnail_size_limit));
@@ -92,6 +100,7 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
         if (item.isDir()) {
             holder.dirIcon.setVisibility(View.VISIBLE);
             holder.fileIcon.setVisibility(View.GONE);
+            holder.videoBadge.setVisibility(View.GONE);
             holder.fileSize.setVisibility(View.GONE);
             holder.interpunct.setVisibility(View.GONE);
         } else {
@@ -102,32 +111,13 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
             holder.interpunct.setVisibility(View.VISIBLE);
         }
 
-        if (showThumbnails && !item.isDir()) {
-            String server = "http://127.0.0.1:29179/";
-            boolean localLoad = item.getRemote().getType() == RemoteItem.SAFW;
-            String mimeType = item.getMimeType();
-            if ((mimeType.startsWith("image/") || mimeType.startsWith("video/")) && item.getSize() <= sizeLimit) {
-                RequestOptions glideOption = new RequestOptions()
-                        .centerCrop()
-                        .diskCacheStrategy(DiskCacheStrategy.ALL)
-                        .placeholder(R.drawable.ic_file);
-                if(localLoad) {
-                    bindSafFile(holder, item, glideOption);
-                } else {
-                    String[] serverParams = listener.getThumbnailServerParams();
-                    String hiddenPath = serverParams[0];
-                    int serverPort = Integer.parseInt(serverParams[1]);
-                    String url = "http://127.0.0.1:" + serverPort + "/" + hiddenPath + '/' + item.getPath();
-                    Glide
-                            .with(context)
-                            .load(new PersistentGlideUrl(url))
-                            .apply(glideOption)
-                            .thumbnail(0.1f)
-                            .into(holder.fileIcon);
-                }
-
-            } else {
-                holder.fileIcon.setImageResource(R.drawable.ic_file);
+        if (showThumbnails) {
+            // Row icons share one width so file names stay aligned, whether or not a preview shows.
+            holder.icons.getLayoutParams().width = thumbnailSizePx;
+            ((FrameLayout.LayoutParams) holder.fileIcon.getLayoutParams()).gravity = Gravity.CENTER;
+            ((FrameLayout.LayoutParams) holder.dirIcon.getLayoutParams()).gravity = Gravity.CENTER;
+            if (!item.isDir()) {
+                bindThumbnail(holder, item);
             }
         }
 
@@ -200,6 +190,70 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
         });
     }
 
+    /**
+     * Loads a preview for images and videos, or restores the plain file icon.
+     *
+     * <p>Caching: only the small, already cropped thumbnail is persisted (RESOURCE strategy), never
+     * the original file. The cache identity includes modification time and size, so a changed file
+     * gets a new preview while an unchanged one is served from disk without touching the remote.</p>
+     */
+    private void bindThumbnail(@NonNull ViewHolder holder, FileItem item) {
+        String mimeType = item.getMimeType();
+        boolean isImage = mimeType.startsWith("image/");
+        boolean isVideo = mimeType.startsWith("video/");
+        // The size limit protects against downloading huge images. Videos are exempt because only a
+        // small part of the file (header and one keyframe) is read.
+        boolean eligible = isImage ? item.getSize() <= sizeLimit : isVideo;
+        if (!eligible) {
+            resetFileIcon(holder);
+            return;
+        }
+
+        RequestOptions glideOption = new RequestOptions()
+                .centerCrop()
+                .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                .override(thumbnailSizePx)
+                .signature(new ObjectKey(item.getModTime() + "/" + item.getSize()))
+                .placeholder(R.drawable.ic_file)
+                .error(R.drawable.ic_file);
+
+        holder.fileIcon.getLayoutParams().width = thumbnailSizePx;
+        holder.fileIcon.getLayoutParams().height = thumbnailSizePx;
+        holder.videoBadge.setVisibility(isVideo ? View.VISIBLE : View.GONE);
+
+        if (item.getRemote().getType() == RemoteItem.SAFW) {
+            bindSafFile(holder, item, glideOption);
+            return;
+        }
+
+        String[] serverParams = listener.getThumbnailServerParams();
+        int serverPort = Integer.parseInt(serverParams[1]);
+        // The secret path segment and port change per session, so they are fetch-only details.
+        String url = "http://127.0.0.1:" + serverPort + "/" + Uri.encode(serverParams[0] + '/' + item.getPath(), "/");
+        if (isVideo) {
+            String cacheKey = "video:" + item.getRemote().getName() + ':' + item.getPath()
+                    + ':' + item.getModTime() + ':' + item.getSize();
+            Glide.with(context)
+                    .load(new VideoThumbnailRequest(url, cacheKey))
+                    .apply(glideOption)
+                    .into(holder.fileIcon);
+        } else {
+            Glide.with(context)
+                    .load(new PersistentGlideUrl(url))
+                    .apply(glideOption)
+                    .into(holder.fileIcon);
+        }
+    }
+
+    private void resetFileIcon(@NonNull ViewHolder holder) {
+        // Cancel any in-flight request, otherwise a late result would replace the icon of a recycled row.
+        Glide.with(context).clear(holder.fileIcon);
+        holder.fileIcon.getLayoutParams().width = iconSizePx;
+        holder.fileIcon.getLayoutParams().height = iconSizePx;
+        holder.fileIcon.setImageResource(R.drawable.ic_file);
+        holder.videoBadge.setVisibility(View.GONE);
+    }
+
     private void bindSafFile(@NonNull ViewHolder holder, FileItem item, RequestOptions glideOption) {
         try {
             Uri contentUri = SafAccessProvider.getDirectServer(context).getDocumentUri('/'+ item.getPath());
@@ -207,11 +261,10 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
                     .with(context)
                     .load(contentUri)
                     .apply(glideOption)
-                    .thumbnail(0.1f)
                     .into(holder.fileIcon);
         } catch (FileAccessError e) {
             FLog.e(TAG, "onBindViewHolder: SAF error", e);
-            holder.fileIcon.setImageResource(R.drawable.ic_file);
+            resetFileIcon(holder);
         }
     }
 
@@ -455,6 +508,7 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
         public final View icons;
         public final ImageView fileIcon;
         public final ImageView dirIcon;
+        public final ImageView videoBadge;
         public final TextView fileName;
         public final TextView fileModTime;
         public final TextView fileSize;
@@ -468,6 +522,7 @@ public class FileExplorerRecyclerViewAdapter extends RecyclerView.Adapter<FileEx
             this.icons = view.findViewById(R.id.icons);
             this.fileIcon = view.findViewById(R.id.file_icon);
             this.dirIcon = view.findViewById(R.id.dir_icon);
+            this.videoBadge = view.findViewById(R.id.video_badge);
             this.fileName = view.findViewById(R.id.file_name);
             this.fileModTime = view.findViewById(R.id.file_modtime);
             this.fileSize = view.findViewById(R.id.file_size);

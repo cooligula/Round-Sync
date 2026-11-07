@@ -23,6 +23,11 @@
             android:title="@string/pref_thumbnails_dlg_title"
             app:dependency="@string/pref_key_show_thumbnails" />
 
+        <Preference
+            android:key="@string/pref_key_thumbnail_cache_clear"
+            android:title="@string/pref_thumbnail_cache_clear_title"
+            app:summary="@string/pref_thumbnail_cache_calculating" />
+
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/preference_category_header_background_work">

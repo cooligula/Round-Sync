@@ -218,6 +218,10 @@
     <string name="pref_thumbnails_size_title">Maximum file size for thumbnails</string>
     <string name="pref_thumbnails_dlg_title">Size limit (MB)</string>
     <string name="pref_thumbnails_size_summary">%1$.1f MB</string>
+    <string name="pref_thumbnail_cache_clear_title">Clear thumbnail cache</string>
+    <string name="pref_thumbnail_cache_calculating">Calculating…</string>
+    <string name="pref_thumbnail_cache_summary">Cached previews use %1$s. Tap to delete them.</string>
+    <string name="pref_thumbnail_cache_cleared">Thumbnail cache cleared</string>
     <string name="generate_password_title">Generate Password</string>
     <string name="set_password_button">Set Password</string>
     <string name="password_length_label">Length</string>

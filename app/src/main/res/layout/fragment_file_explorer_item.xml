@@ -38,6 +38,14 @@
                 android:src="@drawable/ic_folder"
                 android:layout_gravity="center_vertical"
                 android:contentDescription="@string/file_icon" />
+            <ImageView
+                android:id="@+id/video_badge"
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_gravity="bottom|end"
+                android:src="@drawable/ic_video_badge"
+                android:visibility="gone"
+                android:importantForAccessibility="no" />
         </FrameLayout>
 
         <LinearLayout
