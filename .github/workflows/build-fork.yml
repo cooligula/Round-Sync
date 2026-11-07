@@ -48,11 +48,15 @@ jobs:
           go-version: ${{ steps.versions.outputs.go }}
           cache: false
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install NDK
-        run: sdkmanager "ndk;${{ steps.versions.outputs.ndk }}"
+      # The GitHub-hosted image already ships the Android SDK (ANDROID_HOME),
+      # so no setup action is needed; just accept licenses and add the NDK.
+      - name: Install NDK and SDK packages
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "ndk;${{ steps.versions.outputs.ndk }}" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Set up Gradle (with build cache)
         uses: gradle/actions/setup-gradle@v4
