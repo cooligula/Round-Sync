@@ -97,20 +97,37 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # Publishes the APKs as a GitHub release:
+  #  - pushing a tag v*  -> a normal release named after the tag
+  #  - pushing a branch / manual run -> the rolling "nightly" prerelease,
+  #    which is replaced on every successful build
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: roundsync-oss-debug
           path: apks
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: apks/*.apk
-          generate_release_notes: true
-          prerelease: true
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          gh release create "$GITHUB_REF_NAME" apks/*.apk \
+            --title "$GITHUB_REF_NAME" --generate-notes
+
+      - name: Publish nightly prerelease
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          gh release delete nightly --cleanup-tag --yes || true
+          gh release create nightly apks/*.apk \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Nightly (${GITHUB_REF_NAME}, ${GITHUB_SHA::7})" \
+            --notes "Debug build of \`${GITHUB_REF_NAME}\` at ${GITHUB_SHA}. Replaced on every successful push. Install roundsync_*-oss-universal-debug.apk if unsure which ABI you need (arm64-v8a is right for most modern phones)."
