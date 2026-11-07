@@ -91,7 +91,7 @@ public class VideoThumbnailModelLoader implements ModelLoader<VideoThumbnailRequ
                 }
             } catch (RuntimeException e) {
                 // MediaMetadataRetriever reports unsupported/unreachable media as RuntimeException.
-                FLog.d(TAG, "loadData: failed for %s: %s", request.cacheKey, e.getMessage());
+                FLog.w(TAG, "loadData: failed for %s: %s", request.cacheKey, e.getMessage());
                 callback.onLoadFailed(e);
             } finally {
                 try {

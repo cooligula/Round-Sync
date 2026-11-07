@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <integer name="default_thumbnail_size_limit">20971520</integer>
+    <!-- Single source of truth: the settings screen and the file browser must agree,
+         otherwise the switch shows "on" while thumbnails are actually off. -->
+    <bool name="default_show_thumbnails">true</bool>
 </resources>

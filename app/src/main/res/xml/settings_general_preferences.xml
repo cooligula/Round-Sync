@@ -13,7 +13,7 @@
 
     <PreferenceCategory app:title="@string/preference_category_header_thumbnails">
         <SwitchPreferenceCompat
-            app:defaultValue="true"
+            app:defaultValue="@bool/default_show_thumbnails"
             app:key="@string/pref_key_show_thumbnails"
             app:title="@string/show_thumbnails" />
 
