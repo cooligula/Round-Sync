@@ -96,8 +96,8 @@ public class VideoThumbnailModelLoader implements ModelLoader<VideoThumbnailRequ
             } finally {
                 try {
                     retriever.release();
-                } catch (RuntimeException ignored) {
-                    // nothing to do
+                } catch (Exception ignored) {
+                    // release() is declared to throw IOException on newer SDKs; nothing to do
                 }
             }
         }
